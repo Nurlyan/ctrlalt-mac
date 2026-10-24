@@ -1,9 +1,9 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(
     name: "CtrlAlt",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v26)],
     targets: [
         // Чистая логика: генерация правил, конфиг Karabiner, список устройств.
         .target(name: "CtrlAltCore"),

@@ -24,10 +24,11 @@ if arguments.count > 1, arguments[1] == "--print-rules" {
     exit(0)
 }
 
-//   CtrlAlt --snapshot out.png         — нарисовать меню в PNG (проверка вёрстки без клика по строке меню).
-if arguments.count > 2, arguments[1] == "--snapshot" {
-    MenuSnapshot.write(to: URL(filePath: arguments[2]))
-    exit(0)
+//   CtrlAlt --show-ui [раздел] [секунды]  — открыть панель и окно настроек для проверки вёрстки.
+if arguments.count > 1, arguments[1] == "--show-ui" {
+    let section = arguments.count > 2 ? SettingsSection(rawValue: arguments[2]) ?? .general : .general
+    let seconds = arguments.count > 3 ? Double(arguments[3]) ?? 15 : 15
+    MenuSnapshot.show(section: section, seconds: seconds)
 }
 
 CtrlAltApp.main()

@@ -47,15 +47,38 @@ final class AppModel {
     var message: String?
     var isError = false
     var launchAtLogin = SMAppService.mainApp.status == .enabled
+    /// Открытый раздел окна настроек (здесь, а не в @State: макросов SwiftUI нет в Command Line Tools).
+    var section: SettingsSection = .general
 
-    init(applyOnLaunch: Bool = true) {
+    var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev" }
+
+    var selectedKeyboardInfo: KeyboardInfo? { keyboards.first { $0.id == settings.keyboard } }
+
+    var keyboardSubtitle: String {
+        guard let id = settings.keyboard else { return "Клавиатура не выбрана" }
+        guard let info = selectedKeyboardInfo else { return "Клавиатура \(id.hex) не подключена" }
+        return [info.name ?? "Клавиатура \(id.hex)", info.transport].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// Смена языка: Alt+Shift и Win+Space включаются и выключаются вместе в быстрой панели.
+    var languageSwitching: Bool {
+        get { settings.features.altShiftLayout || settings.features.winSpaceLayout }
+        set {
+            settings.features.altShiftLayout = newValue
+            settings.features.winSpaceLayout = newValue
+        }
+    }
+
+    /// live == false: режим показа интерфейса, без записи конфига и без перехвата колеса.
+    init(live: Bool = true) {
+        self.live = live
         if let data = UserDefaults.standard.data(forKey: Self.settingsKey),
            let saved = try? JSONDecoder().decode(AppSettings.self, from: data) {
             settings = saved
             // Настройки уже сохранены через приложение: обновляем правила (например, после обновления CtrlAlt).
             // Без изменений apply ничего не записывает.
             refresh()
-            if applyOnLaunch { apply() }
+            if live { apply() }
             return
         } else {
             // Первый запуск: подхватываем клавиатуру из уже записанных правил (например, KD83A).
@@ -88,6 +111,10 @@ final class AppModel {
     }
 
     func updateScrollZoom() {
+        guard live else {
+            scrollZoomNeedsPermission = settings.scrollZoom && !ScrollZoom.hasPermission
+            return
+        }
         guard settings.enabled, settings.scrollZoom else {
             scrollZoom.stop()
             scrollZoomNeedsPermission = false
@@ -110,6 +137,7 @@ final class AppModel {
         }
     }
 
+    @ObservationIgnored private let live: Bool
     @ObservationIgnored private var permissionPoll: Task<Void, Never>?
 
     func requestScrollZoomPermission() {
