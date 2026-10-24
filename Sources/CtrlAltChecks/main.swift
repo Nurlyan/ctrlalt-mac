@@ -2,6 +2,7 @@
 // Запуск: swift run CtrlAltChecks
 import CtrlAltCore
 import Foundation
+import MosScroll
 
 var failures = 0
 var current = ""
@@ -211,6 +212,49 @@ test("подпись установщика: только Developer ID Installer
     check(!KarabinerInstaller.isTrustedSignature(trusted.replacingOccurrences(of: "Developer ID Installer", with: "Developer ID Application")), "не installer-сертификат принят")
     check(!KarabinerInstaller.isTrustedSignature(trusted.replacingOccurrences(of: "Status: signed by a developer certificate issued by Apple for distribution", with: "Status: signed by untrusted certificate")), "недоверенная подпись принята")
     check(!KarabinerInstaller.isTrustedSignature("Package \"x.pkg\":\n   Status: no signature"), "неподписанный принят")
+}
+
+// MARK: - Плавная прокрутка (Mos)
+
+test("прокрутка: значения по умолчанию как в Mos") {
+    let s = MosScrollSettings()
+    check(s.step == 33.6 && s.speed == 2.70 && s.duration == 4.35 && s.deadZone == 1.0)
+    check(s.dash == MosKeyCode.optionL && s.toggle == MosKeyCode.shiftL && s.block == MosKeyCode.commandL)
+    // Формула Mos: 1 - sqrt(duration / 5.2), три знака.
+    check(s.durationTransition == 0.085, "\(s.durationTransition)")
+    var fast = s
+    fast.duration = 1
+    check(fast.durationTransition == 0.561, "\(fast.durationTransition)")
+}
+
+test("прокрутка: старые настройки без новых полей читаются") {
+    let partial = #"{"smooth":false,"step":50}"#
+    let s = try JSONDecoder().decode(MosScrollSettings.self, from: Data(partial.utf8))
+    check(s.smooth == false && s.step == 50)
+    check(s.speed == 2.70 && s.dash == MosKeyCode.optionL)
+    let noKey = #"{"dash":null}"#
+    check(try JSONDecoder().decode(MosScrollSettings.self, from: Data(noKey.utf8)).dash == nil, "явное «нет» потерялось")
+}
+
+test("прокрутка: импорт настроек в формате Mos") {
+    let suite = "ctrlalt.checks.mos-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    check(MosScrollSettings.importedFromMos(defaults) == nil, "пустые настройки приняты за Mos")
+
+    defaults.set(1, forKey: "smooth")
+    defaults.set(0, forKey: "reverse")
+    defaults.set("40.5", forKey: "step")
+    defaults.set("3.1", forKey: "speed")
+    defaults.set("2.5", forKey: "duration")
+    defaults.set(Data(#"{"code":56,"type":"keyboard"}"#.utf8), forKey: "dash")
+    defaults.set(Data(#"{"code":3,"type":"mouse"}"#.utf8), forKey: "block")
+    let s = MosScrollSettings.importedFromMos(defaults)
+    check(s?.smooth == true && s?.reverse == false)
+    check(s?.step == 40.5 && s?.speed == 3.1 && s?.duration == 2.5)
+    check(s?.dash == MosKeyCode.shiftL, "dash \(String(describing: s?.dash))")
+    check(s?.block == .some(nil), "кнопка мыши должна стать «нет»")
+    check(s?.toggle == MosKeyCode.shiftL, "toggle по умолчанию")
 }
 
 print(failures == 0 ? "\nВсе проверки пройдены." : "\nОшибок: \(failures)")

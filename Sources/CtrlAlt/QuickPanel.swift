@@ -132,6 +132,10 @@ struct QuickPanel: View {
                 }
                 GridRow {
                     QuickTile(title: "Ctrl как ⌘", symbol: "command", isOn: $model.settings.features.ctrlShortcuts)
+                    QuickTile(title: "Рабочие столы", symbol: "rectangle.split.3x1.fill", isOn: $model.settings.features.winCtrlDesktops)
+                }
+                GridRow {
+                    QuickTile(title: "Плавная прокрутка", symbol: "computermouse.fill", isOn: $model.settings.smoothScroll)
                     QuickTile(title: "Масштаб колесом", symbol: "plus.magnifyingglass", isOn: $model.settings.scrollZoom)
                 }
             }

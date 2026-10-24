@@ -1,5 +1,6 @@
 import AppKit
 import CtrlAltCore
+import MosScroll
 import SwiftUI
 
 /// Окно настроек в духе «Системных настроек»: боковая панель и сгруппированные разделы.
@@ -312,8 +313,89 @@ struct ShortcutsPage: View {
 struct MousePage: View {
     @Bindable var model: AppModel
 
+    private var scroll: Binding<MosScrollSettings> { $model.settings.scroll }
+
     var body: some View {
         Form {
+            if model.needsAccessibility {
+                Section {
+                    StatusLine(text: "Для масштаба и плавной прокрутки нужно разрешение «Универсальный доступ»", ok: false) {
+                        Button("Разрешить") { model.requestAccessibility() }
+                            .buttonStyle(.glassProminent)
+                    }
+                }
+            }
+
+            Section {
+                FeatureToggle(
+                    title: "Плавная прокрутка",
+                    detail: "Колесо мыши прокручивает плавно, как трекпад. Трекпад не затрагивается.",
+                    isOn: $model.settings.smoothScroll
+                )
+                if model.settings.smoothScroll && model.mosAppRunning {
+                    StatusLine(text: "Запущен Mos — прокрутка CtrlAlt ждёт, пока он закроется, чтобы не сглаживать дважды", ok: false) {
+                        Button("Закрыть Mos") { model.quitMosApp() }
+                            .buttonStyle(.glassProminent)
+                    }
+                } else if model.smoothScrollActive {
+                    StatusLine(text: "Работает", ok: true)
+                }
+                if model.settings.smoothScroll {
+                    Toggle("По вертикали", isOn: scroll.smoothVertical.animation(Motion.snappy))
+                    Toggle("По горизонтали", isOn: scroll.smoothHorizontal.animation(Motion.snappy))
+                }
+            } header: {
+                Text("Прокрутка")
+            } footer: {
+                Text("Основано на Mos by Caldis (CC BY-NC 4.0). Отдельный Mos больше не нужен: настройки перенесены из него.")
+                    .foregroundStyle(.secondary)
+            }
+
+            if model.settings.smoothScroll {
+                Section("Направление") {
+                    Toggle("Обратное направление колеса", isOn: scroll.reverse.animation(Motion.snappy))
+                    if model.settings.scroll.reverse {
+                        Toggle("По вертикали", isOn: scroll.reverseVertical)
+                        Toggle("По горизонтали", isOn: scroll.reverseHorizontal)
+                    }
+                }
+
+                Section {
+                    ScrollSlider(title: "Шаг", value: scroll.step, range: 1...120, format: "%.0f")
+                    ScrollSlider(title: "Скорость", value: scroll.speed, range: 1...10, format: "%.1f")
+                    ScrollSlider(title: "Плавность", value: scroll.duration, range: 1...5, format: "%.2f")
+                } header: {
+                    Text("Тонкая настройка")
+                } footer: {
+                    HStack {
+                        Text("Шаг — минимальная прокрутка за щелчок, плавность — как долго движение затухает.")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("По умолчанию") {
+                            withAnimation(Motion.smooth) {
+                                var defaults = MosScrollSettings()
+                                defaults.dash = model.settings.scroll.dash
+                                defaults.toggle = model.settings.scroll.toggle
+                                defaults.block = model.settings.scroll.block
+                                model.settings.scroll = defaults
+                            }
+                        }
+                        .buttonStyle(.glass)
+                    }
+                }
+
+                Section {
+                    ModifierPicker(title: "Ускорить прокрутку", selection: scroll.dash)
+                    ModifierPicker(title: "Прокручивать по горизонтали", selection: scroll.toggle)
+                    ModifierPicker(title: "Без сглаживания", selection: scroll.block)
+                } header: {
+                    Text("Клавиши при прокрутке")
+                } footer: {
+                    Text("Держите клавишу и крутите колесо. Alt на внешней клавиатуре работает как ⌘.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section {
                 FeatureToggle(
                     title: "Масштаб колесом",
@@ -321,21 +403,66 @@ struct MousePage: View {
                     combos: [KeyCombo(from: ["Ctrl", "Колесо"], to: ["⌘", "+/−"])],
                     isOn: $model.settings.scrollZoom
                 )
-                if model.scrollZoomNeedsPermission {
-                    StatusLine(text: "Нужно разрешение «Универсальный доступ»", ok: false) {
-                        Button("Разрешить") { model.requestScrollZoomPermission() }
-                            .buttonStyle(.glassProminent)
-                    }
-                } else if model.settings.scrollZoom && model.settings.enabled {
-                    StatusLine(text: "Работает", ok: true)
-                }
-            } footer: {
-                Text("Прокрутку и сглаживание по-прежнему обрабатывает Mos. CtrlAlt забирает только Ctrl+колесо.")
-                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Масштаб")
             }
         }
         .formStyle(.grouped)
         .disabled(!model.settings.enabled)
+        .animation(Motion.smooth, value: model.settings.smoothScroll)
+        .animation(Motion.smooth, value: model.mosAppRunning)
+        .animation(Motion.smooth, value: model.needsAccessibility)
+    }
+}
+
+/// Ползунок с подписью и текущим значением.
+struct ScrollSlider: View {
+    var title: String
+    @Binding var value: Double
+    var range: ClosedRange<Double>
+    var format: String
+
+    var body: some View {
+        LabeledContent {
+            HStack(spacing: 10) {
+                Slider(value: $value, in: range)
+                    .frame(minWidth: 180)
+                Text(String(format: format, value))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, alignment: .trailing)
+                    .contentTransition(.numericText(value: value))
+                    .animation(Motion.snappy, value: value)
+            }
+        } label: {
+            Text(title)
+        }
+    }
+}
+
+/// Выбор клавиши-модификатора для прокрутки.
+struct ModifierPicker: View {
+    var title: String
+    @Binding var selection: UInt16?
+
+    private static let options: [(code: UInt16?, title: String)] = [
+        (nil, "Нет"),
+        (MosKeyCode.shiftL, "⇧ Shift"),
+        (MosKeyCode.optionL, "⌥ Option"),
+        (MosKeyCode.commandL, "⌘ Command"),
+        (MosKeyCode.controlL, "⌃ Control"),
+    ]
+
+    var body: some View {
+        Picker(title, selection: $selection) {
+            ForEach(Self.options, id: \.title) { option in
+                Text(option.title).tag(option.code)
+            }
+            // Клавиша из Mos, которой нет в списке (например, правый Shift), остаётся выбранной.
+            if let code = selection, !Self.options.contains(where: { $0.code == code }) {
+                Text("Клавиша \(code)").tag(Optional(code))
+            }
+        }
     }
 }
 
@@ -417,10 +544,19 @@ struct AboutPage: View {
             Text("Windows-сочетания на внешней клавиатуре.\nВвод обрабатывает Karabiner-Elements, CtrlAlt управляет его правилами.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
-            Button("Сайт Karabiner-Elements", systemImage: "safari") {
-                NSWorkspace.shared.open(Karabiner.downloadPage)
+            HStack {
+                Button("Karabiner-Elements", systemImage: "safari") {
+                    NSWorkspace.shared.open(Karabiner.downloadPage)
+                }
+                Button("Mos", systemImage: "safari") {
+                    NSWorkspace.shared.open(URL(string: "https://github.com/Caldis/Mos")!)
+                }
             }
             .buttonStyle(.glass)
+            Text("Плавная прокрутка основана на Mos by Caldis (CC BY-NC 4.0).\nCtrlAlt — некоммерческий проект.")
+                .font(.caption)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.tertiary)
             Spacer()
         }
         .frame(maxWidth: .infinity)

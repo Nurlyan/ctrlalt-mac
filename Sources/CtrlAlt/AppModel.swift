@@ -1,6 +1,7 @@
 import AppKit
 import CtrlAltCore
 import Foundation
+import MosScroll
 import Observation
 import ServiceManagement
 
@@ -21,6 +22,9 @@ struct AppSettings: Codable, Equatable, Sendable {
     var features = Features()
     /// Ctrl + колесо мыши — масштаб (работает в приложении, не в Karabiner).
     var scrollZoom = true
+    /// Плавная прокрутка из Mos (работает в приложении, не в Karabiner).
+    var smoothScroll = true
+    var scroll = MosScrollSettings()
 
     init() {}
 
@@ -31,6 +35,10 @@ struct AppSettings: Codable, Equatable, Sendable {
         keyboard = try c.decodeIfPresent(KeyboardID.self, forKey: .keyboard)
         features = try c.decodeIfPresent(Features.self, forKey: .features) ?? Features()
         scrollZoom = try c.decodeIfPresent(Bool.self, forKey: .scrollZoom) ?? true
+        smoothScroll = try c.decodeIfPresent(Bool.self, forKey: .smoothScroll) ?? true
+        // Прокрутки ещё не было в настройках: берём настройки установленного Mos, если он есть.
+        scroll = try c.decodeIfPresent(MosScrollSettings.self, forKey: .scroll)
+            ?? MosScrollSettings.importedFromMos() ?? MosScrollSettings()
     }
 }
 
@@ -43,17 +51,20 @@ final class AppModel {
         didSet {
             guard settings != oldValue else { return }
             save()
-            updateScrollZoom()
-            // Масштаб колесом живёт в приложении: правила Karabiner от него не зависят.
-            var karabinerPart = settings, oldKarabinerPart = oldValue
-            karabinerPart.scrollZoom = false
-            oldKarabinerPart.scrollZoom = false
-            if karabinerPart != oldKarabinerPart { apply() }  // несколько быстрых изменений — одна запись
+            updateMouseFeatures()
+            // Масштаб и прокрутка живут в приложении: правила Karabiner зависят только от этих полей.
+            if settings.enabled != oldValue.enabled || settings.keyboard != oldValue.keyboard
+                || settings.features != oldValue.features {
+                apply()  // несколько быстрых изменений — одна запись
+            }
         }
     }
     private let scrollZoom = ScrollZoom()
-    /// Масштаб колесом включён в настройках, но нет разрешения «Универсальный доступ».
-    var scrollZoomNeedsPermission = false
+    /// Масштаб колесом или прокрутка включены, но нет разрешения «Универсальный доступ».
+    var needsAccessibility = false
+    /// Запущен настоящий Mos: своя плавная прокрутка не включается, чтобы не было двойной.
+    var mosAppRunning = false
+    var smoothScrollActive = false
     var status = KarabinerStatus(installed: false, version: nil, driverActive: false, configExists: false)
     var keyboards: [KeyboardInfo] = []
     var message: String?
@@ -94,6 +105,7 @@ final class AppModel {
         } else {
             // Первый запуск: подхватываем клавиатуру из уже записанных правил (например, KD83A).
             var initial = AppSettings()
+            initial.scroll = MosScrollSettings.importedFromMos() ?? MosScrollSettings()
             if let config = try? KarabinerConfig.load() {
                 initial.keyboard = KarabinerConfig.ownedKeyboards(in: config).first
             }
@@ -103,6 +115,8 @@ final class AppModel {
         // список клавиатур подгружается в фоне.
         status = Karabiner.status()
         refresh()
+        updateMouseFeatures()
+        watchMosApp()
         // Karabiner не готов: окно настроек откроется на разделе с шагами установки.
         if !status.ready { section = .karabiner }
         // Настройки уже сохранены через приложение: обновляем правила (например, после обновления CtrlAlt).
@@ -138,7 +152,7 @@ final class AppModel {
             self.refreshTask = nil
             if status != self.status { self.status = status }
             if keyboards != self.keyboards { self.keyboards = keyboards }
-            self.updateScrollZoom()
+            self.updateMouseFeatures()
             if !status.ready { self.watchKarabinerSetup() }
         }
     }
@@ -190,29 +204,58 @@ final class AppModel {
         }
     }
 
-    func updateScrollZoom() {
+    /// Включает масштаб Ctrl+колесом и плавную прокрутку Mos по настройкам, разрешению
+    /// «Универсальный доступ» и запущенному Mos. Без разрешения ждёт его и включает всё само.
+    func updateMouseFeatures() {
+        MosScroll.apply(settings.scroll)
+        mosAppRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: MosScroll.mosBundleID).isEmpty
+        let wantZoom = settings.enabled && settings.scrollZoom
+        let wantSmooth = settings.enabled && settings.smoothScroll
+        let trusted = ScrollZoom.hasPermission
         guard live else {
-            scrollZoomNeedsPermission = settings.scrollZoom && !ScrollZoom.hasPermission
+            needsAccessibility = (wantZoom || wantSmooth) && !trusted
+            smoothScrollActive = wantSmooth && !mosAppRunning && trusted
             return
         }
-        guard settings.enabled, settings.scrollZoom else {
-            scrollZoom.stop()
-            scrollZoomNeedsPermission = false
-            return
-        }
-        scrollZoomNeedsPermission = !scrollZoom.start()
-        // Ждём, пока пользователь выдаст разрешение в Системных настройках.
-        if scrollZoomNeedsPermission, permissionPoll == nil {
-            permissionPoll = Task { [weak self] in
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(2))
-                    guard let self else { return }
-                    if ScrollZoom.hasPermission {
-                        self.permissionPoll = nil
-                        self.updateScrollZoom()
-                        return
-                    }
+        if wantZoom { scrollZoom.start() } else { scrollZoom.stop() }
+        if wantSmooth && !mosAppRunning && trusted { MosScroll.start() } else { MosScroll.stop() }
+        smoothScrollActive = MosScroll.isRunning
+        needsAccessibility = (wantZoom && !scrollZoom.isRunning) || (wantSmooth && !trusted)
+        if needsAccessibility { startPermissionPoll() }
+    }
+
+    /// Ждём, пока пользователь выдаст разрешение в Системных настройках.
+    private func startPermissionPoll() {
+        guard permissionPoll == nil else { return }
+        permissionPoll = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self else { return }
+                if ScrollZoom.hasPermission {
+                    self.permissionPoll = nil
+                    self.updateMouseFeatures()
+                    return
                 }
+            }
+        }
+    }
+
+    /// Закрыть настоящий Mos, чтобы включилась прокрутка CtrlAlt.
+    func quitMosApp() {
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: MosScroll.mosBundleID) {
+            app.terminate()
+        }
+    }
+
+    /// Следим за запуском и закрытием Mos: прокрутка CtrlAlt уступает ему и включается после него.
+    private func watchMosApp() {
+        guard live else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                guard app?.bundleIdentifier == MosScroll.mosBundleID else { return }
+                MainActor.assumeIsolated { self?.updateMouseFeatures() }
             }
         }
     }
@@ -227,7 +270,7 @@ final class AppModel {
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var applyTask: Task<Void, Never>?
 
-    func requestScrollZoomPermission() {
+    func requestAccessibility() {
         ScrollZoom.requestPermission()
     }
 
