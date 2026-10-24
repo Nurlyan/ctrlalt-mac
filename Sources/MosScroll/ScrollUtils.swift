@@ -154,6 +154,9 @@ class ScrollUtils {
     func optionsDashKey() -> ScrollHotkey? {
         MosScroll.settings.dash.map { ScrollHotkey(type: .keyboard, code: $0) }
     }
+    func optionsDashAlternateKey() -> ScrollHotkey? {
+        MosScroll.settings.dashAlternate.map { ScrollHotkey(type: .keyboard, code: $0) }
+    }
     func optionsToggleKey() -> ScrollHotkey? {
         MosScroll.settings.toggle.map { ScrollHotkey(type: .keyboard, code: $0) }
     }

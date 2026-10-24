@@ -41,7 +41,16 @@ test("правила совпадают с проверенными на KD83A")
     // Файл, проверенный вручную на клавиатуре; переменные приведены к именам приложения.
     let url = Bundle.module.url(forResource: "kd83a-verified", withExtension: "json", subdirectory: "Fixtures")!
     let text = try String(contentsOf: url, encoding: .utf8).replacingOccurrences(of: "\"kd83a_", with: "\"ctrlalt_")
-    let expected = (try JSONSerialization.jsonObject(with: Data(text.utf8)) as! JSONObject)["rules"] as! [JSONObject]
+    var expected = (try JSONSerialization.jsonObject(with: Data(text.utf8)) as! JSONObject)["rules"] as! [JSONObject]
+    // 0.6.0: левый Alt стал правым Command (а не левым), чтобы отличать его от Win.
+    // Меняются только манипуляторы Alt (все, кроме двух последних — Win+Space и одиночный Win).
+    var altWin = expected[0]["manipulators"] as! [JSONObject]
+    for i in 0..<(altWin.count - 2) {
+        let json = String(decoding: try JSONSerialization.data(withJSONObject: altWin[i]), as: UTF8.self)
+            .replacingOccurrences(of: "\"left_command\"", with: "\"right_command\"")
+        altWin[i] = try JSONSerialization.jsonObject(with: Data(json.utf8)) as! JSONObject
+    }
+    expected[0]["manipulators"] = altWin
 
     // Win+Ctrl+←/→ добавлен после ручной проверки.
     var f = Features()
@@ -78,6 +87,15 @@ test("старые настройки без новой группы читаю�
 test("без клавиатуры и без групп правил нет") {
     check(RuleGenerator.rules(for: [], features: Features()).isEmpty)
     check(RuleGenerator.rules(for: [kd83a], features: features(mask: 0)).isEmpty)
+}
+
+test("Alt — правый Command, Win — левый") {
+    let altWin = RuleGenerator.rules(for: [kd83a], features: Features())[0]["manipulators"] as! [JSONObject]
+    let alt = altWin.first { ($0["from"] as! JSONObject)["key_code"] as? String == "left_option"
+        && (($0["from"] as! JSONObject)["modifiers"] as! JSONObject)["mandatory"] == nil }!
+    check(((alt["to"] as! [JSONObject])[1])["key_code"] as? String == "right_command")
+    let win = altWin.first { ($0["from"] as! JSONObject)["key_code"] as? String == "left_command" }!
+    check(((win["to"] as! [JSONObject])[0])["key_code"] as? String == "left_command")
 }
 
 test("Alt+Shift без Alt+Tab оставляет Alt как Option") {
@@ -220,6 +238,7 @@ test("прокрутка: значения по умолчанию как в Mos
     let s = MosScrollSettings()
     check(s.step == 33.6 && s.speed == 2.70 && s.duration == 4.35 && s.deadZone == 1.0)
     check(s.dash == MosKeyCode.optionL && s.toggle == MosKeyCode.shiftL && s.block == MosKeyCode.commandL)
+    check(s.dashAlternate == MosKeyCode.commandR, "Alt внешней клавиатуры (правый ⌘) ускоряет")
     // Формула Mos: 1 - sqrt(duration / 5.2), три знака.
     check(s.durationTransition == 0.085, "\(s.durationTransition)")
     var fast = s
@@ -231,7 +250,7 @@ test("прокрутка: старые настройки без новых по
     let partial = #"{"smooth":false,"step":50}"#
     let s = try JSONDecoder().decode(MosScrollSettings.self, from: Data(partial.utf8))
     check(s.smooth == false && s.step == 50)
-    check(s.speed == 2.70 && s.dash == MosKeyCode.optionL)
+    check(s.speed == 2.70 && s.dash == MosKeyCode.optionL && s.dashAlternate == MosKeyCode.commandR)
     let noKey = #"{"dash":null}"#
     check(try JSONDecoder().decode(MosScrollSettings.self, from: Data(noKey.utf8)).dash == nil, "явное «нет» потерялось")
 }

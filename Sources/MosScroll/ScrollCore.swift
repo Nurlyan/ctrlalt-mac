@@ -25,6 +25,7 @@ class ScrollCore {  // CtrlAlt: без ScrollActionPort (кнопки мыши �
     var blockSmooth = false
     // 非修饰键热键的按下状态跟踪
     var dashKeyHeld = false
+    var dashAlternateKeyHeld = false  // CtrlAlt: вторая клавиша ускорения (Alt внешней клавиатуры)
     var toggleKeyHeld = false
     var blockKeyHeld = false
     // CtrlAlt: исключения для приложений не переносились; вместо них — PID цели прокрутки,
@@ -179,7 +180,7 @@ class ScrollCore {  // CtrlAlt: без ScrollActionPort (кнопки мыши �
     
     // CtrlAlt: обработка HID++ (Logitech) и действий кнопок Mos удалена; состояние — только от клавиш.
     private func refreshDashState() {
-        dashScroll = dashKeyHeld
+        dashScroll = dashKeyHeld || dashAlternateKeyHeld
         dashAmplification = dashScroll ? 5.0 : 1.0
     }
 
@@ -236,6 +237,11 @@ class ScrollCore {  // CtrlAlt: без ScrollActionPort (кнопки мыши �
             ScrollCore.shared.dashKeyHeld = isPressed
             ScrollCore.shared.refreshDashState()
         }
+        // CtrlAlt: Dash, вторая клавиша
+        if let isPressed = checkAndUpdateHotkey(ScrollUtils.shared.optionsDashAlternateKey(), keyHeld: &ScrollCore.shared.dashAlternateKeyHeld) {
+            ScrollCore.shared.dashAlternateKeyHeld = isPressed
+            ScrollCore.shared.refreshDashState()
+        }
         // Toggle
         if let isPressed = checkAndUpdateHotkey(toggleHotkey, keyHeld: &ScrollCore.shared.toggleKeyHeld) {
             ScrollCore.shared.toggleKeyHeld = isPressed
@@ -253,6 +259,7 @@ class ScrollCore {  // CtrlAlt: без ScrollActionPort (кнопки мыши �
         if isAppTargetChanged && isAnyKeyUp {
             // 重置按键状态
             ScrollCore.shared.dashKeyHeld = false
+            ScrollCore.shared.dashAlternateKeyHeld = false
             ScrollCore.shared.toggleKeyHeld = false
             ScrollCore.shared.blockKeyHeld = false
             ScrollCore.shared.refreshDashState()

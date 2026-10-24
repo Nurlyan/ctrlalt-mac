@@ -386,12 +386,16 @@ struct MousePage: View {
 
                 Section {
                     ModifierPicker(title: "Ускорить прокрутку", selection: scroll.dash)
+                    Toggle("Alt внешней клавиатуры тоже ускоряет", isOn: Binding(
+                        get: { model.settings.scroll.dashAlternate != nil },
+                        set: { model.settings.scroll.dashAlternate = $0 ? MosKeyCode.commandR : nil }
+                    ))
                     ModifierPicker(title: "Прокручивать по горизонтали", selection: scroll.toggle)
                     ModifierPicker(title: "Без сглаживания", selection: scroll.block)
                 } header: {
                     Text("Клавиши при прокрутке")
                 } footer: {
-                    Text("Держите клавишу и крутите колесо. Alt на внешней клавиатуре работает как ⌘.")
+                    Text("Держите клавишу и крутите колесо. Alt на внешней клавиатуре — это правый ⌘, поэтому ⌘ на ней (Win) не ускоряет.")
                         .foregroundStyle(.secondary)
                 }
             }

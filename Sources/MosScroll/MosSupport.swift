@@ -29,6 +29,9 @@ public struct MosScrollSettings: Codable, Equatable, Sendable {
     public var dash: UInt16? = MosKeyCode.optionL
     public var toggle: UInt16? = MosKeyCode.shiftL
     public var block: UInt16? = MosKeyCode.commandL
+    /// CtrlAlt: вторая клавиша ускорения. Правый Command — это Alt внешней клавиатуры
+    /// (Karabiner делает из него правый Command), поэтому Alt ускоряет прокрутку, как Option в Mos.
+    public var dashAlternate: UInt16? = MosKeyCode.commandR
 
     public init() {}
 
@@ -50,6 +53,7 @@ public struct MosScrollSettings: Codable, Equatable, Sendable {
         dash = c.contains(.dash) ? try c.decodeIfPresent(UInt16.self, forKey: .dash) : d.dash
         toggle = c.contains(.toggle) ? try c.decodeIfPresent(UInt16.self, forKey: .toggle) : d.toggle
         block = c.contains(.block) ? try c.decodeIfPresent(UInt16.self, forKey: .block) : d.block
+        dashAlternate = c.contains(.dashAlternate) ? try c.decodeIfPresent(UInt16.self, forKey: .dashAlternate) : d.dashAlternate
     }
 
     /// Коэффициент интерполяции из длительности (формула Mos: generateDurationTransition).

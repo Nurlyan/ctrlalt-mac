@@ -58,6 +58,9 @@ public enum RuleGenerator {
     public static let descriptionPrefix = "CtrlAlt"
 
     public static let altHeld = "ctrlalt_alt_held"
+    /// Во что превращается левый Alt: правый Command. Для macOS это обычный Command (Alt+Tab работает),
+    /// но его можно отличить от Win (левый Command) — например, для быстрой прокрутки.
+    public static let altCommand = "right_command"
     static let switcherActive = "ctrlalt_alt_tab_active"
 
     static let terminals = [
@@ -120,7 +123,7 @@ public enum RuleGenerator {
                 m.append([
                     "type": "basic",
                     "from": ["key_code": "left_option", "modifiers": ["mandatory": ["left_shift"], "optional": ["caps_lock"]]],
-                    "to": [setVar(altHeld, 1), ["key_code": "left_command", "modifiers": ["left_shift"]]],
+                    "to": [setVar(altHeld, 1), ["key_code": altCommand, "modifiers": ["left_shift"]]],
                     "to_if_alone": [switchLayout],
                     "to_after_key_up": [setVar(altHeld, 0), setVar(switcherActive, 0)],
                     "conditions": [device],
@@ -130,8 +133,8 @@ public enum RuleGenerator {
                 // В открытом переключателе Shift работает как обычно (обратный проход).
                 m.append([
                     "type": "basic",
-                    "from": ["key_code": "left_shift", "modifiers": ["mandatory": ["left_command"], "optional": ["caps_lock"]]],
-                    "to": [["key_code": "left_shift", "modifiers": ["left_command"]]],
+                    "from": ["key_code": "left_shift", "modifiers": ["mandatory": [altCommand], "optional": ["caps_lock"]]],
+                    "to": [["key_code": "left_shift", "modifiers": [altCommand]]],
                     "to_if_alone": [switchLayout],
                     "conditions": [device, varIf(altHeld, 1), varIf(switcherActive, 0)],
                     "parameters": aloneTimeout,
@@ -144,11 +147,11 @@ public enum RuleGenerator {
                 "to": [setVar(switcherActive, 1), ["key_code": "tab"]],
                 "conditions": [device, varIf(altHeld, 1)],
             ])
-            // Левый Alt держит Command до отпускания.
+            // Левый Alt держит Command (правый, см. altCommand) до отпускания.
             m.append([
                 "type": "basic",
                 "from": ["key_code": "left_option", "modifiers": ["optional": ["any"]]],
-                "to": [setVar(altHeld, 1), ["key_code": "left_command"]],
+                "to": [setVar(altHeld, 1), ["key_code": altCommand]],
                 "to_after_key_up": [setVar(altHeld, 0), setVar(switcherActive, 0)],
                 "conditions": [device],
             ])
@@ -156,7 +159,7 @@ public enum RuleGenerator {
             for key in backToOption {
                 m.append([
                     "type": "basic",
-                    "from": ["key_code": key, "modifiers": ["mandatory": ["left_command"], "optional": ["any"]]],
+                    "from": ["key_code": key, "modifiers": ["mandatory": [altCommand], "optional": ["any"]]],
                     "to": [["key_code": key, "modifiers": ["left_option"]]],
                     "conditions": [device, varIf(altHeld, 1), varIf(switcherActive, 0)],
                 ])
