@@ -48,10 +48,15 @@ final class AppModel {
     var isError = false
     var launchAtLogin = SMAppService.mainApp.status == .enabled
 
-    init() {
+    init(applyOnLaunch: Bool = true) {
         if let data = UserDefaults.standard.data(forKey: Self.settingsKey),
            let saved = try? JSONDecoder().decode(AppSettings.self, from: data) {
             settings = saved
+            // Настройки уже сохранены через приложение: обновляем правила (например, после обновления CtrlAlt).
+            // Без изменений apply ничего не записывает.
+            refresh()
+            if applyOnLaunch { apply() }
+            return
         } else {
             // Первый запуск: подхватываем клавиатуру из уже записанных правил (например, KD83A).
             var initial = AppSettings()
@@ -111,8 +116,14 @@ final class AppModel {
         ScrollZoom.requestPermission()
     }
 
-    /// Записывает правила в karabiner.json. Вызывается только при изменении настроек,
-    /// чтобы запуск приложения ничего не менял в конфиге.
+    /// Кнопка «Применить»: сохраняет текущие настройки и записывает правила.
+    func applyNow() {
+        save()
+        apply()
+    }
+
+    /// Записывает правила в karabiner.json. Вызывается при изменении настроек, по кнопке
+    /// и при запуске, только если настройки уже сохранены через приложение.
     func apply() {
         refresh()
         guard status.installed else { return report("Karabiner-Elements не установлен", error: true) }

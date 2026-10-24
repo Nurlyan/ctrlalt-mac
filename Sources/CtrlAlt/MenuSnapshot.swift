@@ -6,7 +6,7 @@ import SwiftUI
 enum MenuSnapshot {
     static func write(to url: URL) {
         _ = NSApplication.shared
-        let view = NSHostingView(rootView: MenuView(model: AppModel()).background(Color(nsColor: .windowBackgroundColor)))
+        let view = NSHostingView(rootView: MenuView(model: AppModel(applyOnLaunch: false)).background(Color(nsColor: .windowBackgroundColor)))
         view.frame.size = view.fittingSize
         view.layoutSubtreeIfNeeded()
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }

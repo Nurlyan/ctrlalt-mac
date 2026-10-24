@@ -75,6 +75,8 @@ struct MenuView: View {
             ))
 
             HStack {
+                Button("Применить") { model.applyNow() }
+                    .disabled(model.settings.keyboard == nil && model.settings.enabled)
                 Button("Обновить") { model.refresh() }
                 Button("Karabiner…") { NSWorkspace.shared.open(Karabiner.appURL) }
                     .disabled(!model.status.installed)
