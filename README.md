@@ -51,6 +51,7 @@ CtrlAlt — надстройка над [Karabiner-Elements](https://karabiner-e
 Нужны Command Line Tools (Xcode не обязателен).
 
 ```bash
+./scripts/make-signing-cert.sh # один раз: сертификат для подписи сборок
 swift run CtrlAltChecks        # проверки логики
 ./scripts/build-app.sh         # build/CtrlAlt.app
 ./scripts/make-dmg.sh          # build/CtrlAlt-<версия>.dmg
@@ -80,7 +81,7 @@ CTRLALT_PREVIEW_KARABINER=missing .build/debug/CtrlAlt --show-ui karabiner   # �
 
 ## Ограничения
 
-- Подпись локальная (ad-hoc). После каждой пересборки macOS может забыть разрешение «Универсальный доступ» — тогда выключите и снова включите CtrlAlt в настройках.
+- Сборки подписываются локальным самоподписанным сертификатом «CtrlAlt Local Signing» (`./scripts/make-signing-cert.sh`, один раз на Mac). macOS узнаёт CtrlAlt по сертификату, поэтому разрешение «Управление устройством» сохраняется после обновлений. Без сертификата `build-app.sh` подписывает ad-hoc, и разрешение придётся выдавать заново после каждой сборки. На другом Mac сертификат не доверенный, поэтому скачанный DMG открывается правым кликом → «Открыть».
 - Ctrl+колесо срабатывает и с Ctrl встроенной клавиатуры: macOS не сообщает, с какой клавиатуры нажат модификатор.
 - Если зажать Win, кликнуть мышью и быстро отпустить Win, может открыться Spotlight: Karabiner не видит клики мыши, которую он не обрабатывает.
 - Одна выбранная клавиатура; правила привязаны к VID/PID модели.
