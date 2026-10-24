@@ -96,12 +96,12 @@ public enum Karabiner {
         return result.status == 0 ? nil : result.output
     }
 
-    struct RunResult {
-        var status: Int32
-        var output: String
+    public struct RunResult: Sendable {
+        public var status: Int32
+        public var output: String
     }
 
-    static func run(_ path: String, _ arguments: [String]) throws -> RunResult {
+    public static func run(_ path: String, _ arguments: [String]) throws -> RunResult {
         let process = Process()
         process.executableURL = URL(filePath: path)
         process.arguments = arguments

@@ -13,7 +13,13 @@ struct QuickPanel: View {
             header
             powerButton
             status
-            tiles
+            if model.status.ready {
+                tiles
+            } else {
+                KarabinerSetupCard(model: model) {
+                    openSettingsWindow(openWindow, section: .karabiner, model: model)
+                }
+            }
             if let message = model.message, model.isError {
                 Text(message)
                     .font(.caption)
@@ -90,18 +96,12 @@ struct QuickPanel: View {
 
     private var status: some View {
         VStack(spacing: 4) {
-            Text(isOn ? "Включено" : "Выключено")
+            Text(!isOn ? "Выключено" : model.status.ready ? "Включено" : "Ждёт Karabiner")
                 .font(.title2.weight(.semibold))
                 .contentTransition(.opacity)
             Text(model.keyboardSubtitle)
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            if !model.status.ready {
-                Label("Karabiner требует внимания", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .onTapGesture { openSettingsWindow(openWindow, section: .karabiner, model: model) }
-            }
         }
     }
 

@@ -1,4 +1,5 @@
 import AppKit
+import CtrlAltCore
 import SwiftUI
 
 /// Отладочный показ интерфейса без клика по строке меню: настоящие окна, чтобы стекло рисовалось как в жизни.
@@ -10,6 +11,18 @@ enum MenuSnapshot {
         app.setActivationPolicy(.regular)
         let model = AppModel(live: false)
         model.section = section
+        // CTRLALT_PREVIEW_KARABINER: показать шаги установки, будто Karabiner ещё не готов.
+        switch ProcessInfo.processInfo.environment["CTRLALT_PREVIEW_KARABINER"] {
+        case "missing":
+            model.previewStatus = KarabinerStatus(installed: false, version: nil, driverActive: false, configExists: false)
+        case "downloading":
+            model.previewStatus = KarabinerStatus(installed: false, version: nil, driverActive: false, configExists: false)
+            model.install = .working("Скачиваем Karabiner-Elements 16.3.0 (42,4 МБ)…", progress: 0.42)
+        case "driver":
+            model.previewStatus = KarabinerStatus(installed: true, version: "16.3.0", driverActive: false, configExists: false)
+        default:
+            break
+        }
 
         let panel = window(QuickPanel(model: model), title: "Панель", size: nil, origin: NSPoint(x: 80, y: 200))
         let settings = window(SettingsView(model: model), title: "CtrlAlt", size: NSSize(width: 780, height: 580), origin: NSPoint(x: 440, y: 120))

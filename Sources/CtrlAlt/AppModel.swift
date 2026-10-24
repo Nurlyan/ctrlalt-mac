@@ -1,7 +1,19 @@
+import AppKit
 import CtrlAltCore
 import Foundation
 import Observation
 import ServiceManagement
+
+/// Ход установки Karabiner-Elements из приложения.
+enum InstallState: Equatable {
+    case idle
+    case working(String, progress: Double?)
+    /// Установщик macOS открыт; дальше пользователь проходит его и шаги настройки.
+    case installerOpened
+    case failed(String)
+
+    var isWorking: Bool { if case .working = self { true } else { false } }
+}
 
 struct AppSettings: Codable, Equatable {
     var enabled = true
@@ -49,6 +61,7 @@ final class AppModel {
     var launchAtLogin = SMAppService.mainApp.status == .enabled
     /// Открытый раздел окна настроек (здесь, а не в @State: макросов SwiftUI нет в Command Line Tools).
     var section: SettingsSection = .general
+    var install: InstallState = .idle
 
     var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev" }
 
@@ -89,7 +102,11 @@ final class AppModel {
             settings = initial
         }
         refresh()
+        // Karabiner не готов: окно настроек откроется на разделе с шагами установки.
+        if !status.ready { section = .karabiner }
     }
+
+    private var hasSavedSettings: Bool { UserDefaults.standard.data(forKey: Self.settingsKey) != nil }
 
     /// Список для выбора: подключённые клавиатуры плюс сохранённая, если она сейчас отключена.
     var keyboardChoices: [(id: KeyboardID, title: String)] {
@@ -105,9 +122,57 @@ final class AppModel {
     }
 
     func refresh() {
-        status = Karabiner.status()
+        status = previewStatus ?? Karabiner.status()
         keyboards = (try? Karabiner.connectedKeyboards()) ?? []
         updateScrollZoom()
+        if !status.ready { watchKarabinerSetup() }
+    }
+
+    /// Пока Karabiner не готов, раз в 2 секунды проверяем его состояние: шаги установки
+    /// отмечаются сами, а когда всё готово, правила записываются без лишних нажатий.
+    private func watchKarabinerSetup() {
+        guard live, setupPoll == nil else { return }
+        setupPoll = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self else { return }
+                let current = Karabiner.status()
+                if current != self.status { self.status = current }
+                if current.ready {
+                    self.setupPoll = nil
+                    self.install = .idle
+                    self.refresh()
+                    if self.hasSavedSettings || self.settings.keyboard != nil { self.apply() }
+                    return
+                }
+            }
+        }
+    }
+
+    /// Скачивает официальный Karabiner-Elements, проверяет подпись и открывает установщик macOS.
+    func installKarabiner() {
+        guard !install.isWorking else { return }
+        install = .working("Ищем последнюю версию…", progress: nil)
+        Task {
+            do {
+                let release = try await KarabinerInstaller.fetchLatestRelease()
+                let size = ByteCountFormatter.string(fromByteCount: Int64(release.size), countStyle: .file)
+                install = .working("Скачиваем Karabiner-Elements \(release.version) (\(size))…", progress: 0)
+                let image = try await KarabinerInstaller.download(release) { fraction in
+                    Task { @MainActor in
+                        guard case .working(let text, _) = self.install else { return }
+                        self.install = .working(text, progress: fraction)
+                    }
+                }
+                install = .working("Проверяем подпись установщика…", progress: nil)
+                let package = try await Task.detached { try KarabinerInstaller.extractVerifiedPackage(from: image) }.value
+                NSWorkspace.shared.open(package)
+                install = .installerOpened
+                watchKarabinerSetup()
+            } catch {
+                install = .failed(error.localizedDescription)
+            }
+        }
     }
 
     func updateScrollZoom() {
@@ -138,7 +203,12 @@ final class AppModel {
     }
 
     @ObservationIgnored private let live: Bool
+    /// Только для --show-ui: подставное состояние Karabiner, которое не перезаписывается при обновлении.
+    @ObservationIgnored var previewStatus: KarabinerStatus? {
+        didSet { if let previewStatus { status = previewStatus } }
+    }
     @ObservationIgnored private var permissionPoll: Task<Void, Never>?
+    @ObservationIgnored private var setupPoll: Task<Void, Never>?
 
     func requestScrollZoomPermission() {
         ScrollZoom.requestPermission()

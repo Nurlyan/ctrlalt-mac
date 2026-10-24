@@ -24,6 +24,22 @@ if arguments.count > 1, arguments[1] == "--print-rules" {
     exit(0)
 }
 
+//   CtrlAlt --check-karabiner-download     — скачать последний Karabiner и проверить подпись, не устанавливая.
+if arguments.count > 1, arguments[1] == "--check-karabiner-download" {
+    do {
+        let release = try await KarabinerInstaller.fetchLatestRelease()
+        print("Релиз \(release.version): \(release.diskImage.absoluteString) (\(release.size) байт)")
+        let image = try await KarabinerInstaller.download(release) { _ in }
+        print("Скачано: \(image.path)")
+        let package = try KarabinerInstaller.extractVerifiedPackage(from: image)
+        print("Подпись проверена: \(package.path)")
+        exit(0)
+    } catch {
+        print("Ошибка: \(error.localizedDescription)")
+        exit(1)
+    }
+}
+
 //   CtrlAlt --show-ui [раздел] [секунды]  — открыть панель и окно настроек для проверки вёрстки.
 if arguments.count > 1, arguments[1] == "--show-ui" {
     let section = arguments.count > 2 ? SettingsSection(rawValue: arguments[2]) ?? .general : .general

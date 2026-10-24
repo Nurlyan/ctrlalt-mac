@@ -18,5 +18,7 @@ struct CtrlAltApp: App {
         }
         .windowToolbarStyle(.unified)
         .defaultSize(width: 780, height: 580)
+        // Karabiner не установлен или не настроен: сразу показываем шаги установки.
+        .defaultLaunchBehavior(model.status.ready ? .suppressed : .presented)
     }
 }

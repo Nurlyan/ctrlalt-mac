@@ -177,5 +177,41 @@ test("список клавиатур: без встроенной, виртуа
     check(keyboards.last?.title == "WLMOUSE 1K RECEIVER (36a7:a882)")
 }
 
+// MARK: - Установщик Karabiner
+
+test("релиз Karabiner: берётся .dmg с github.com") {
+    let json = """
+    {"tag_name": "v16.3.0", "assets": [
+      {"name": "Karabiner-Elements-16.3.0.dmg.sha256", "browser_download_url": "https://github.com/pqrs-org/Karabiner-Elements/releases/download/v16.3.0/x.sha256", "size": 64},
+      {"name": "Karabiner-Elements-16.3.0.dmg", "browser_download_url": "https://github.com/pqrs-org/Karabiner-Elements/releases/download/v16.3.0/Karabiner-Elements-16.3.0.dmg", "size": 42388528}
+    ]}
+    """
+    let release = try KarabinerInstaller.parseLatestRelease(Data(json.utf8))
+    check(release.version == "16.3.0")
+    check(release.diskImage.lastPathComponent == "Karabiner-Elements-16.3.0.dmg")
+    check(release.size == 42388528)
+
+    let foreign = json.replacingOccurrences(of: "https://github.com/pqrs-org/Karabiner-Elements/releases/download/v16.3.0/Karabiner", with: "https://example.com/Karabiner")
+    check((try? KarabinerInstaller.parseLatestRelease(Data(foreign.utf8))) == nil, "ссылка не на github.com принята")
+}
+
+test("подпись установщика: только Developer ID Installer разработчика Karabiner") {
+    let trusted = """
+    Package "Karabiner-Elements.pkg":
+       Status: signed by a developer certificate issued by Apple for distribution
+       Notarization: trusted by the Apple notary service
+       Certificate Chain:
+        1. Developer ID Installer: Fumihiko Takayama (G43BCU2T37)
+           Expires: 2027-02-01 00:00:00 +0000
+        2. Developer ID Certification Authority
+        3. Apple Root CA
+    """
+    check(KarabinerInstaller.isTrustedSignature(trusted))
+    check(!KarabinerInstaller.isTrustedSignature(trusted.replacingOccurrences(of: "G43BCU2T37", with: "ABCDE12345")), "чужая команда принята")
+    check(!KarabinerInstaller.isTrustedSignature(trusted.replacingOccurrences(of: "Developer ID Installer", with: "Developer ID Application")), "не installer-сертификат принят")
+    check(!KarabinerInstaller.isTrustedSignature(trusted.replacingOccurrences(of: "Status: signed by a developer certificate issued by Apple for distribution", with: "Status: signed by untrusted certificate")), "недоверенная подпись принята")
+    check(!KarabinerInstaller.isTrustedSignature("Package \"x.pkg\":\n   Status: no signature"), "неподписанный принят")
+}
+
 print(failures == 0 ? "\nВсе проверки пройдены." : "\nОшибок: \(failures)")
 exit(failures == 0 ? 0 : 1)

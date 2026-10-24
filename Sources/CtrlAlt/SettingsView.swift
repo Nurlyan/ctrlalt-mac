@@ -331,6 +331,17 @@ struct KarabinerPage: View {
 
     var body: some View {
         Form {
+            if !model.status.ready {
+                Section {
+                    KarabinerSetupSteps(model: model)
+                } header: {
+                    Text("Подготовка Karabiner")
+                } footer: {
+                    Text("CtrlAlt не перехватывает клавиши сам: это делает Karabiner-Elements. Если он уже установлен, CtrlAlt просто использует его.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Состояние") {
                 row("Karabiner-Elements", ok: model.status.installed,
                     value: model.status.installed ? (model.status.version ?? "установлен") : "не установлен")
@@ -341,12 +352,6 @@ struct KarabinerPage: View {
             }
 
             Section {
-                if !model.status.installed {
-                    Button("Скачать Karabiner-Elements", systemImage: "arrow.down.circle") {
-                        NSWorkspace.shared.open(Karabiner.downloadPage)
-                    }
-                    .buttonStyle(.glassProminent)
-                }
                 HStack {
                     Button("Открыть Karabiner", systemImage: "gearshape.2") {
                         NSWorkspace.shared.open(Karabiner.appURL)

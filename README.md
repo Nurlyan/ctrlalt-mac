@@ -25,10 +25,15 @@ CtrlAlt — надстройка над [Karabiner-Elements](https://karabiner-e
 
 ## Установка
 
-1. Нужна macOS 26 или новее. Установите [Karabiner-Elements](https://karabiner-elements.pqrs.org/) и пройдите его первоначальную настройку (драйвер, Input Monitoring).
-2. Откройте `CtrlAlt-<версия>.dmg` и перетащите CtrlAlt в «Программы».
-3. Запустите CtrlAlt: в строке меню появится значок клавиатуры.
-4. В «Настройки… → Клавиатура» выберите внешнюю клавиатуру. Правила записываются в Karabiner сразу.
+1. Нужна macOS 26 или новее.
+2. Откройте `CtrlAlt-<версия>.dmg` и перетащите CtrlAlt в «Программы». Запускайте из «Программ», а не из образа.
+3. Если Karabiner-Elements уже установлен и настроен, CtrlAlt просто использует его. Если нет — сразу откроется окно с тремя шагами:
+   1. **Установить Karabiner-Elements.** CtrlAlt скачает последний официальный образ с GitHub pqrs.org, проверит подпись установщика (Developer ID Installer, Team ID `G43BCU2T37`, нотаризация Apple) и откроет стандартный установщик macOS. Пароль администратора спрашивает сама macOS.
+   2. **Разрешить драйвер и мониторинг ввода** — по запросам Karabiner.
+   3. **Запустить Karabiner один раз**, чтобы он создал `karabiner.json`.
+
+   Шаги отмечаются сами, а когда всё готово, правила записываются автоматически.
+4. В «Настройки… → Клавиатура» выберите внешнюю клавиатуру.
 5. Для масштаба колесом откройте «Мышь», нажмите «Разрешить» и включите CtrlAlt в «Универсальном доступе».
 
 ## Как это работает
@@ -53,9 +58,11 @@ swift scripts/make-icon.swift  # перерисовать Resources/AppIcon.icns
 Отладочные режимы:
 
 ```bash
+.build/debug/CtrlAlt --check-karabiner-download   # скачать Karabiner и проверить подпись, не устанавливая
 .build/debug/CtrlAlt --print-rules 0416:7472   # правила в формате complex modifications
 .build/debug/CtrlAlt --show-ui shortcuts 15    # открыть панель и окно настроек на 15 секунд
 CTRLALT_SNAPSHOT_DIR=/tmp/ui .build/debug/CtrlAlt --show-ui general 3   # и сохранить их в PNG
+CTRLALT_PREVIEW_KARABINER=missing .build/debug/CtrlAlt --show-ui karabiner   # шаги установки (missing / downloading / driver)
 ```
 
 `Sources/CtrlAltChecks/Fixtures/kd83a-verified.json` — правила, проверенные вручную на клавиатуре KD83A. Проверки сравнивают с ними вывод генератора, поэтому менять этот файл стоит только после новой проверки на клавиатуре.
