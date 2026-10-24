@@ -220,7 +220,8 @@ class ScrollCore {  // CtrlAlt: без ScrollActionPort (кнопки мыши �
 
             if hotkey.isModifierKey {
                 // 修饰键：通过 flagsChanged 事件检测
-                if isFlagsChanged && keyCode == hotkey.code {
+                // CtrlAlt: Option/Shift/Control — с любой стороны (MosKeyCode.matchingCodes).
+                if isFlagsChanged && MosKeyCode.matchingCodes(for: hotkey.code).contains(keyCode) {
                     return event.flags.contains(hotkey.modifierMask)
                 }
             } else if hotkey.matches(event, keyCode: keyCode, mouseButton: mouseButton, isMouseEvent: isMouseEvent) {

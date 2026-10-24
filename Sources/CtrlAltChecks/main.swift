@@ -246,6 +246,15 @@ test("прокрутка: значения по умолчанию как в Mos
     check(fast.durationTransition == 0.561, "\(fast.durationTransition)")
 }
 
+test("прокрутка: Option, Shift, Control — с любой стороны, Command — только своей") {
+    check(Set(MosKeyCode.matchingCodes(for: MosKeyCode.optionL)) == [MosKeyCode.optionL, MosKeyCode.optionR])
+    check(Set(MosKeyCode.matchingCodes(for: MosKeyCode.shiftL)) == [MosKeyCode.shiftL, MosKeyCode.shiftR])
+    check(Set(MosKeyCode.matchingCodes(for: MosKeyCode.controlR)) == [MosKeyCode.controlL, MosKeyCode.controlR])
+    // Левый ⌘ (Win, ⌘ MacBook) и правый ⌘ (Alt внешней клавиатуры) не смешиваются.
+    check(MosKeyCode.matchingCodes(for: MosKeyCode.commandL) == [MosKeyCode.commandL])
+    check(MosKeyCode.matchingCodes(for: MosKeyCode.commandR) == [MosKeyCode.commandR])
+}
+
 test("прокрутка: старые настройки без новых полей читаются") {
     let partial = #"{"smooth":false,"step":50}"#
     let s = try JSONDecoder().decode(MosScrollSettings.self, from: Data(partial.utf8))

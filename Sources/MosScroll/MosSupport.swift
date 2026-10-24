@@ -131,6 +131,18 @@ public enum MosKeyCode {
     public static let controlR: UInt16 = 62
     public static let fn: UInt16 = 63
 
+    /// Коды клавиш, которые считаются выбранной клавишей. Option, Shift и Control — с любой стороны,
+    /// как в Windows и в привычке пользователя. Command — только выбранная сторона: правый Command
+    /// в CtrlAlt — это Alt внешней клавиатуры, а левый — Win и Command MacBook.
+    public static func matchingCodes(for code: UInt16) -> [UInt16] {
+        switch code {
+        case optionL, optionR: return [optionL, optionR]
+        case shiftL, shiftR: return [shiftL, shiftR]
+        case controlL, controlR: return [controlL, controlR]
+        default: return [code]
+        }
+    }
+
     static func mask(for code: UInt16) -> CGEventFlags {
         switch code {
         case commandL, commandR: return .maskCommand
