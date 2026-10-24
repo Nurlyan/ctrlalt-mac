@@ -26,8 +26,14 @@ struct SettingsView: View {
             }
             .navigationSplitViewColumnWidth(min: 210, ideal: 230, max: 280)
         } detail: {
-            detail
-                .navigationTitle(model.section.title)
+            // Разделы сменяются плавно: старый растворяется, новый проявляется с небольшим сдвигом.
+            ZStack {
+                detail
+                    .id(model.section)
+                    .transition(.opacity.combined(with: .offset(y: 8)))
+            }
+            .animation(Motion.smooth, value: model.section)
+            .navigationTitle(model.section.title)
         }
         .frame(minWidth: 720, minHeight: 520)
         .onAppear { model.refresh() }
@@ -45,10 +51,12 @@ struct SettingsView: View {
                     Text(model.settings.enabled ? "Включено" : "Выключено")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .contentTransition(.interpolate)
                 }
             }
         }
         .padding(.vertical, 6)
+        .animation(Motion.power, value: model.settings.enabled)
     }
 
     @ViewBuilder
@@ -74,35 +82,39 @@ struct GeneralPage: View {
             Section {
                 HStack(spacing: 16) {
                     Button {
-                        model.settings.enabled.toggle()
+                        withAnimation(Motion.power) { model.settings.enabled.toggle() }
                     } label: {
                         Image(systemName: "power")
                             .font(.system(size: 26, weight: .semibold))
                             .foregroundStyle(model.settings.enabled ? Color.white : Color.secondary)
+                            .symbolEffect(.bounce.down, value: model.settings.enabled)
                             .frame(width: 64, height: 64)
                             .contentShape(.circle)
+                            .glassEffect(
+                                model.settings.enabled ? .regular.tint(.blue).interactive() : .regular.interactive(),
+                                in: .circle
+                            )
+                            .background(
+                                Circle()
+                                    .fill(LinearGradient(colors: [.cyan, .blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                    .blur(radius: 6)
+                                    .opacity(model.settings.enabled ? 0.85 : 0)
+                                    .scaleEffect(model.settings.enabled ? 1 : 0.7)
+                            )
                     }
-                    .buttonStyle(.plain)
-                    .glassEffect(
-                        model.settings.enabled ? .regular.tint(.blue).interactive() : .regular.interactive(),
-                        in: .circle
-                    )
-                    .background(
-                        Circle()
-                            .fill(LinearGradient(colors: [.cyan, .blue, .indigo], startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .opacity(model.settings.enabled ? 0.85 : 0)
-                            .blur(radius: 6)
-                    )
+                    .buttonStyle(PressableStyle(scale: 0.92))
                     VStack(alignment: .leading, spacing: 4) {
                         Text(model.settings.enabled ? "Windows-сочетания включены" : "Windows-сочетания выключены")
                             .font(.title3.weight(.semibold))
+                            .contentTransition(.interpolate)
                         Text(model.keyboardSubtitle)
                             .foregroundStyle(.secondary)
+                            .contentTransition(.opacity)
                     }
                     Spacer()
                 }
                 .padding(.vertical, 6)
-                .animation(.spring(duration: 0.4), value: model.settings.enabled)
+                .animation(Motion.power, value: model.settings.enabled)
             }
 
             Section("Состояние") {
@@ -111,19 +123,21 @@ struct GeneralPage: View {
                     ok: model.status.ready
                 ) {
                     if !model.status.ready {
-                        Button("Подробнее") { model.section = .karabiner }
+                        Button("Подробнее") { withAnimation(Motion.smooth) { model.section = .karabiner } }
                     }
                 }
                 StatusLine(
                     text: model.keyboardSubtitle,
                     ok: model.settings.keyboard != nil
                 ) {
-                    Button("Выбрать") { model.section = .keyboard }
+                    Button("Выбрать") { withAnimation(Motion.smooth) { model.section = .keyboard } }
                 }
                 if let message = model.message {
                     Text(message)
                         .font(.callout)
                         .foregroundStyle(model.isError ? .red : .secondary)
+                        .contentTransition(.opacity)
+                        .animation(Motion.smooth, value: message)
                 }
             }
 
@@ -187,7 +201,7 @@ struct KeyboardPage: View {
         let info = model.keyboards.first { $0.id == id }
         let selected = model.settings.keyboard == id
         return Button {
-            model.settings.keyboard = selected ? nil : id
+            withAnimation(Motion.snappy) { model.settings.keyboard = selected ? nil : id }
         } label: {
             HStack(spacing: 12) {
                 IconBadge(symbol: "keyboard", color: info == nil ? .gray : .blue, size: 28)
@@ -204,6 +218,7 @@ struct KeyboardPage: View {
                 }
                 Spacer()
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .contentTransition(.symbolEffect(.replace))
                     .font(.title3)
                     .foregroundStyle(selected ? Color.blue : Color.secondary)
             }

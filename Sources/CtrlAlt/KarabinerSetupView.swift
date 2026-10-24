@@ -110,10 +110,12 @@ struct SetupStep<Actions: View>: View {
                     Image(systemName: "checkmark")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(.white)
+                        .transition(.scale(scale: 0.4).combined(with: .opacity))
                 } else {
                     Text("\(number)")
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(current ? Color.white : Color.secondary)
+                        .transition(.scale(scale: 0.4).combined(with: .opacity))
                 }
             }
             .frame(width: 28, height: 28)

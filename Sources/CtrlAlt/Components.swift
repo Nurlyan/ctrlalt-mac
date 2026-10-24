@@ -40,6 +40,27 @@ enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
+/// Общие анимации: одинаковые пружины по всему приложению.
+enum Motion {
+    /// Включение и выключение: чуть дольше и мягче.
+    static let power = Animation.spring(duration: 0.45, bounce: 0.18)
+    /// Переключатели и выбор: быстро, с лёгкой упругостью.
+    static let snappy = Animation.snappy(duration: 0.28, extraBounce: 0.04)
+    /// Смена текста, разделов и состояний.
+    static let smooth = Animation.smooth(duration: 0.3)
+}
+
+/// Кнопка слегка «проседает» при нажатии и пружинит обратно.
+struct PressableStyle: ButtonStyle {
+    var scale: CGFloat = 0.96
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? scale : 1)
+            .animation(.spring(duration: 0.22, bounce: 0.35), value: configuration.isPressed)
+    }
+}
+
 /// Цветной значок в скруглённом квадрате, как в «Системных настройках».
 struct IconBadge: View {
     var symbol: String
@@ -107,7 +128,7 @@ struct FeatureToggle: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(isOn: $isOn) {
+        Toggle(isOn: $isOn.animation(Motion.snappy)) {
             VStack(alignment: .leading, spacing: 5) {
                 Text(title)
                 Text(detail)

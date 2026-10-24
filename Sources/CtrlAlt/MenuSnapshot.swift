@@ -41,6 +41,18 @@ enum MenuSnapshot {
                 save(settings, to: URL(filePath: dir).appending(path: "settings-\(section.rawValue).png"))
             }
         }
+        // CTRLALT_SNAPSHOT_ANIMATE: выключить в 2.0 с и снять панель в нескольких кадрах перехода.
+        if let dir = ProcessInfo.processInfo.environment["CTRLALT_SNAPSHOT_DIR"],
+           ProcessInfo.processInfo.environment["CTRLALT_SNAPSHOT_ANIMATE"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                withAnimation(Motion.power) { model.settings.enabled.toggle() }
+            }
+            for ms in [60, 150, 260, 600] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0 + Double(ms) / 1000) {
+                    save(panel, to: URL(filePath: dir).appending(path: "panel-\(ms)ms.png"))
+                }
+            }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { exit(0) }
         app.run()
     }

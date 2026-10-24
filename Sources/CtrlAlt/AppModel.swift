@@ -15,7 +15,7 @@ enum InstallState: Equatable {
     var isWorking: Bool { if case .working = self { true } else { false } }
 }
 
-struct AppSettings: Codable, Equatable {
+struct AppSettings: Codable, Equatable, Sendable {
     var enabled = true
     var keyboard: KeyboardID?
     var features = Features()
@@ -48,7 +48,7 @@ final class AppModel {
             var karabinerPart = settings, oldKarabinerPart = oldValue
             karabinerPart.scrollZoom = false
             oldKarabinerPart.scrollZoom = false
-            if karabinerPart != oldKarabinerPart { apply() }
+            if karabinerPart != oldKarabinerPart { apply() }  // несколько быстрых изменений — одна запись
         }
     }
     private let scrollZoom = ScrollZoom()
@@ -62,6 +62,8 @@ final class AppModel {
     /// Открытый раздел окна настроек (здесь, а не в @State: макросов SwiftUI нет в Command Line Tools).
     var section: SettingsSection = .general
     var install: InstallState = .idle
+    /// Идёт запись правил в Karabiner (в фоне).
+    var isApplying = false
 
     var version: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev" }
 
@@ -85,14 +87,10 @@ final class AppModel {
     /// live == false: режим показа интерфейса, без записи конфига и без перехвата колеса.
     init(live: Bool = true) {
         self.live = live
-        if let data = UserDefaults.standard.data(forKey: Self.settingsKey),
-           let saved = try? JSONDecoder().decode(AppSettings.self, from: data) {
+        let saved = UserDefaults.standard.data(forKey: Self.settingsKey)
+            .flatMap { try? JSONDecoder().decode(AppSettings.self, from: $0) }
+        if let saved {
             settings = saved
-            // Настройки уже сохранены через приложение: обновляем правила (например, после обновления CtrlAlt).
-            // Без изменений apply ничего не записывает.
-            refresh()
-            if live { apply() }
-            return
         } else {
             // Первый запуск: подхватываем клавиатуру из уже записанных правил (например, KD83A).
             var initial = AppSettings()
@@ -101,9 +99,15 @@ final class AppModel {
             }
             settings = initial
         }
+        // Статус нужен сразу (от него зависит, открывать ли окно при запуске) и занимает ~10 мс;
+        // список клавиатур подгружается в фоне.
+        status = Karabiner.status()
         refresh()
         // Karabiner не готов: окно настроек откроется на разделе с шагами установки.
         if !status.ready { section = .karabiner }
+        // Настройки уже сохранены через приложение: обновляем правила (например, после обновления CtrlAlt).
+        // Без изменений запись пропускается.
+        if saved != nil { apply(after: .zero) }
     }
 
     private var hasSavedSettings: Bool { UserDefaults.standard.data(forKey: Self.settingsKey) != nil }
@@ -121,11 +125,22 @@ final class AppModel {
         keyboards.first { $0.id == settings.keyboard }?.alsoPointing ?? false
     }
 
+    /// Обновляет статус Karabiner и список клавиатур. Внешние команды (~80 мс) идут в фоне,
+    /// чтобы панель открывалась без задержки; повторные вызовы во время обновления пропускаются.
     func refresh() {
-        status = previewStatus ?? Karabiner.status()
-        keyboards = (try? Karabiner.connectedKeyboards()) ?? []
-        updateScrollZoom()
-        if !status.ready { watchKarabinerSetup() }
+        guard refreshTask == nil else { return }
+        let preview = previewStatus
+        refreshTask = Task { [weak self] in
+            let (status, keyboards) = await Task.detached(priority: .userInitiated) {
+                (preview ?? Karabiner.status(), (try? Karabiner.connectedKeyboards()) ?? [])
+            }.value
+            guard let self else { return }
+            self.refreshTask = nil
+            if status != self.status { self.status = status }
+            if keyboards != self.keyboards { self.keyboards = keyboards }
+            self.updateScrollZoom()
+            if !status.ready { self.watchKarabinerSetup() }
+        }
     }
 
     /// Пока Karabiner не готов, раз в 2 секунды проверяем его состояние: шаги установки
@@ -136,7 +151,7 @@ final class AppModel {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
                 guard let self else { return }
-                let current = Karabiner.status()
+                let current = await Task.detached { Karabiner.status() }.value
                 if current != self.status { self.status = current }
                 if current.ready {
                     self.setupPoll = nil
@@ -209,27 +224,57 @@ final class AppModel {
     }
     @ObservationIgnored private var permissionPoll: Task<Void, Never>?
     @ObservationIgnored private var setupPoll: Task<Void, Never>?
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var applyTask: Task<Void, Never>?
 
     func requestScrollZoomPermission() {
         ScrollZoom.requestPermission()
     }
 
-    /// Кнопка «Применить»: сохраняет текущие настройки и записывает правила.
+    /// Кнопка «Применить»: сохраняет текущие настройки и записывает правила сразу.
     func applyNow() {
         save()
-        apply()
+        apply(after: .zero)
     }
 
     /// Записывает правила в karabiner.json. Вызывается при изменении настроек, по кнопке
     /// и при запуске, только если настройки уже сохранены через приложение.
-    func apply() {
-        refresh()
-        guard status.installed else { return report("Karabiner-Elements не установлен", error: true) }
-        guard status.configExists else { return report("Откройте Karabiner-Elements один раз, чтобы он создал настройки", error: true) }
+    ///
+    /// Изменения за `delay` объединяются в одну запись (например, плитка «Смена языка» меняет две
+    /// настройки сразу), а проверка линтером и запись (~60 мс) идут в фоне, не задерживая анимации.
+    func apply(after delay: Duration = .milliseconds(250)) {
+        guard live else { return }
+        applyTask?.cancel()
+        let settings = self.settings
+        applyTask = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            self.isApplying = true
+            let outcome = await Task.detached(priority: .userInitiated) { Self.writeRules(settings) }.value
+            self.isApplying = false
+            if outcome.status != self.status { self.status = outcome.status }
+            self.report(outcome.message, error: outcome.isError)
+        }
+    }
+
+    private struct ApplyOutcome: Sendable {
+        var status: KarabinerStatus
+        var message: String
+        var isError: Bool
+    }
+
+    private nonisolated static func writeRules(_ settings: AppSettings) -> ApplyOutcome {
+        let status = Karabiner.status()
+        guard status.installed else { return ApplyOutcome(status: status, message: "Karabiner-Elements не установлен", isError: true) }
+        guard status.configExists else {
+            return ApplyOutcome(status: status, message: "Откройте Karabiner-Elements один раз, чтобы он создал настройки", isError: true)
+        }
 
         let rules: [JSONObject]
         if settings.enabled {
-            guard let keyboard = settings.keyboard else { return report("Выберите внешнюю клавиатуру", error: false) }
+            guard let keyboard = settings.keyboard else {
+                return ApplyOutcome(status: status, message: "Выберите внешнюю клавиатуру", isError: false)
+            }
             rules = RuleGenerator.rules(for: [keyboard], features: settings.features)
         } else {
             rules = []
@@ -237,13 +282,14 @@ final class AppModel {
 
         do {
             if !rules.isEmpty, let lintError = try Karabiner.lint(rules: rules) {
-                return report("Karabiner отклонил правила: \(lintError)", error: true)
+                return ApplyOutcome(status: status, message: "Karabiner отклонил правила: \(lintError)", isError: true)
             }
             try KarabinerConfig.apply(rules: rules)
             let time = Date().formatted(date: .omitted, time: .shortened)
-            report(rules.isEmpty ? "Правила CtrlAlt выключены (\(time))" : "Правила применены (\(time))", error: false)
+            let text = rules.isEmpty ? "Правила CtrlAlt выключены (\(time))" : "Правила применены (\(time))"
+            return ApplyOutcome(status: status, message: text, isError: false)
         } catch {
-            report(error.localizedDescription, error: true)
+            return ApplyOutcome(status: status, message: error.localizedDescription, isError: true)
         }
     }
 
@@ -261,6 +307,7 @@ final class AppModel {
     }
 
     private func save() {
+        guard live else { return }
         if let data = try? JSONEncoder().encode(settings) {
             UserDefaults.standard.set(data, forKey: Self.settingsKey)
         }
